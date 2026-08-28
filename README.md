@@ -14,7 +14,7 @@ Large language models are increasingly deployed in user-facing products that han
 
 + Install package dependencies
 
-  + For finetuning and attacking using SecAlign and Struq (we adopted the requirements in `requirements.txt` in [SecAlign](https://github.com/facebookresearch/SecAlign/tree/main)):
+  + For finetuning and attacking using SecAlign and StruQ (we adopted the requirements in `requirements.txt` in [SecAlign](https://github.com/facebookresearch/SecAlign/tree/main)):
 
     ```
     pip install -r requirements_secalign_struq.txt
@@ -34,17 +34,19 @@ Large language models are increasingly deployed in user-facing products that han
 
 
 ## SecAlign 
-+ To finetune Llama3-8B-Instruct and Mistral-7B-Instruct using SecAlign, run the following respective commands:
++ To finetune Llama3-8B-Instruct, Mistral-7B-Instruct, and Qwen2-1.5B-Instruct using SecAlign, run the following respective commands:
   ```
     bash scripts/defense/secalign_llama3instruct.sh
     bash scripts/defense/secalign_mistralinstruct.sh
+    bash scripts/defense/secalign_qwen.sh
   ```
 
 ## StruQ
-+ Similarly, to finetune Llama3-8B-Instruct and Mistral-7B-Instruct using StruQ, run the following respective commands:
++ Similarly, to finetune Llama3-8B-Instruct, Mistral-7B-Instruct, and  Qwen2-1.5B-Instruct using StruQ, run the following respective commands:
   ```
     bash scripts/defense/struq_llama3instruct.sh
     bash scripts/defense/struq_mistralinstruct.sh
+    bash scripts/defense/struq_qwen.sh
   ```
 
 
