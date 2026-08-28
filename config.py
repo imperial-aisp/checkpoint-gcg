@@ -1,3 +1,5 @@
+import copy
+
 IGNORE_INDEX = -100
 DEFAULT_TOKENS = {
     "pad_token": "[PAD]",
@@ -61,12 +63,28 @@ DELIMITERS = {
         "<|eot_id|><|start_header_id|>user<|end_header_id|>",
         "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
     ],
+    "Qwen2-0.5B-Instruct": [
+        "<|im_start|>system",
+        "<|im_end|>\n<|im_start|>user",
+        "<|im_end|>\n<|im_start|>assistant",
+    ],
     "Qwen2-1.5B-Instruct": [
         "<|im_start|>system",
         "<|im_end|>\n<|im_start|>user",
         "<|im_end|>\n<|im_start|>assistant",
     ],
+    "Qwen2-7B-Instruct": [
+        "<|im_start|>system",
+        "<|im_end|>\n<|im_start|>user",
+        "<|im_end|>\n<|im_start|>assistant",
+    ],
     "Meta-SecAlign-8B": [
+        # "<|start_header_id|>system<|end_header_id|>",
+        "<|start_header_id|>user<|end_header_id|>",
+        "<|eot_id|><|start_header_id|>input<|end_header_id|>",
+        "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
+    ],
+    "Meta-SecAlign-70B": [
         # "<|start_header_id|>system<|end_header_id|>",
         "<|start_header_id|>user<|end_header_id|>",
         "<|eot_id|><|start_header_id|>input<|end_header_id|>",
@@ -100,6 +118,9 @@ for name, delm in DELIMITERS.items():
     PROMPT_FORMAT[name]["prompt_no_input"] = (
         sys_no_input + delm[0] + "\n{instruction}\n\n" + delm[2] + "\n"
     )
+PROMPT_FORMAT_PREF_DATASET = copy.deepcopy(PROMPT_FORMAT)
+PROMPT_FORMAT_PREF_DATASET["Meta-Llama-3-8B-Instruct"]["prompt_input"] = "<|begin_of_text|>" + PROMPT_FORMAT_PREF_DATASET["Meta-Llama-3-8B-Instruct"]["prompt_input"]
+PROMPT_FORMAT_PREF_DATASET["Meta-Llama-3-8B-Instruct"]["prompt_no_input"] = "<|begin_of_text|>" + PROMPT_FORMAT_PREF_DATASET["Meta-Llama-3-8B-Instruct"]["prompt_no_input"]
 
 
 

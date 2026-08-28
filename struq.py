@@ -1,19 +1,36 @@
 import numpy as np
 import re
 from copy import deepcopy
+import torch
 from torch.utils.data import Dataset
+import transformers
 import logging
 import io
 import json
+import random
 import csv
 from config import (
-    PROMPT_FORMAT,
+    PROMPT_FORMAT_PREF_DATASET,
     IGNORE_ATTACK_SENTENCES,
     OTHER_DELM_FOR_TEST,
     OTHER_DELM_TOKENS,
     IGNORE_INDEX,
     DELIMITERS,
 )
+
+def set_global_seed(seed):
+    # torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    
+    transformers.set_seed(seed)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def format_with_other_delimiters(text, test=False):
@@ -54,7 +71,7 @@ def format_with_other_delimiters(text, test=False):
 
 
 def generate_training_data(data_dicts, prompt_dict_name, attack, tokenizer):
-    prompt_dict = PROMPT_FORMAT[prompt_dict_name]
+    prompt_dict = PROMPT_FORMAT_PREF_DATASET[prompt_dict_name]
     if attack == "None":
         return [
             (
@@ -101,10 +118,10 @@ def generate_training_data(data_dicts, prompt_dict_name, attack, tokenizer):
                 )
             elif attack == "Ignore":
                 data_dicts_item["input"] += (
-                    " "
-                    + np.random.choice(IGNORE_ATTACK_SENTENCES["train"])
-                    + " "
-                    + injected_prompt
+                        " "
+                        + np.random.choice(IGNORE_ATTACK_SENTENCES["train"])
+                        + " "
+                        + injected_prompt
                 )
             elif attack == "Completion":
                 data_dicts_item["input"] += (
@@ -144,6 +161,15 @@ def jload(f, mode="r"):
     jdict = json.load(f)
     f.close()
     return jdict
+
+
+# load jsonl file
+def jlload(f, mode="r"):
+    if not isinstance(f, io.IOBase):
+        f = open(f, mode=mode)
+    jlist = [json.loads(line) for line in f]
+    f.close()
+    return jlist
 
 
 def jdump(obj, f, mode="w", indent=4, default=str):
@@ -216,6 +242,7 @@ class SupervisedDataset(Dataset):
         logging.warning("Loading data...")
         list_data_dict = jload(data_path)
         prompt_dict_name, attacks = attack.split("_")
+        set_global_seed(0)
         source_clean, targets_clean = generate_training_data(
             list_data_dict, prompt_dict_name, "None", tokenizer
         )
@@ -253,6 +280,8 @@ class SupervisedDataset(Dataset):
             else:
                 sources = np.array(sources).tolist()
                 targets = np.array(targets).tolist()
+
+        self.raw_text = [{"source": s, "target": t} for s, t in zip(sources, targets)]
 
         logging.warning("Tokenizing inputs...")
         data_dict = preprocess(sources, targets, tokenizer)

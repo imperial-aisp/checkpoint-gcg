@@ -19,12 +19,11 @@ from huggingface_hub import login
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from dotenv import load_dotenv
+import argparse
 
 load_dotenv()
 hf_token = os.getenv("HF_TOKEN")
 login(token=hf_token)
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 
 class Prompter(object):
@@ -299,5 +298,25 @@ def train(
     print("\n If there's a warning about missing keys above, please disregard :)")
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Safety finetune a model.")
+    parser.add_argument("--base_model", type=str, required=True, help="Base model name")
+    parser.add_argument("--data_path", type=str, default="data/training/saferpaca_Instructions_2000.json", help="Path to training data")
+    parser.add_argument("--output_dir", type=str, required=True, help="Output directory for the finetuned model")
+    parser.add_argument("--wandb_project", type=str, default="safety-finetuning", help="WandB project name")
+    parser.add_argument("--wandb_run_name", type=str, default="safety-finetuning-run", help="WandB run name")
+    parser.add_argument("--device", type=str, default="0", help="Device to use for training (e.g., '0' for GPU 0)")
+
+    args = parser.parse_args()
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device
+
+    train(
+        base_model=args.base_model,
+        data_path=args.data_path,
+        output_dir=args.output_dir,
+        wandb_project=args.wandb_project,
+        wandb_run_name=args.wandb_run_name,
+    )
+
 if __name__ == "__main__":
-    train()
+    main()

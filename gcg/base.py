@@ -111,8 +111,13 @@ class BaseAttack:
         logger.info("Logging to %s", log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        if config.checkpoint == -1:
-            log_file = log_dir / f"{config.sample_id}.jsonl"
+        if hasattr(config, "lora_scale") and config.lora_scale is not None:
+            log_file = log_dir / f"scale_{config.lora_scale}.jsonl"
+        elif config.checkpoint == -1:
+            if config.random_init_baseline:
+                log_file = log_dir / f"random_init_{config.random_init_num}.jsonl"
+            else:
+                log_file = log_dir / f"{config.sample_id}.jsonl"
         else:
             log_file = log_dir / f"checkpoint_{config.checkpoint}.jsonl"
         # Delete log file if it exists

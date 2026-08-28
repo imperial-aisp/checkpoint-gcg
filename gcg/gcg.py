@@ -11,28 +11,83 @@ import time
 from pathlib import Path
 from dataclasses import dataclass
 
-from gcg.base import BaseAttack
+from gcg.base import BaseAttack, AttackResult
 from gcg.eval_input import EvalInput
+from gcg.model import TransformersModel
 from gcg.types import BatchTokenIds
-from gcg.utils import Message, Role
+from gcg.utils import Message, Role, get_nonascii_toks
+import re
+import nltk
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('punkt_tab')
+nltk.download('wordnet')
+from nltk.corpus import stopwords, wordnet
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from collections import defaultdict, OrderedDict
+from torch.nn.utils.rnn import pad_sequence
+import time
 
+def generate_random_suffixes(
+        model,
+        tokenizer,
+        suffix_manager,
+        suffix_length=20,
+        num_suffixes=10000,
+        allow_non_ascii=False,
+):
+    """
+    Generate num_suffixes random suffixes of a given length using the tokenizer's vocabulary.
+    If allow_non_ascii is False, only ASCII characters are used.
+    """
+    vocab_size = tokenizer.vocab_size
+
+    wrapped_model = TransformersModel(
+        "alpaca@none",
+        suffix_manager=suffix_manager,
+        model=model,
+        tokenizer=tokenizer,
+        system_message="",
+        max_tokens=100,
+        temperature=0.0,
+    )
+
+    if not allow_non_ascii:
+        # get non-ASCII token IDs to exclude
+        non_ascii_tok_ids = get_nonascii_toks(tokenizer)
+        non_ascii_tok_ids = [tensor.item() for tensor in non_ascii_tok_ids]
+        # create a list of valid token IDs (excluding non-ASCII ones)
+        valid_tok_ids = torch.tensor(
+            [i for i in range(vocab_size) if i not in non_ascii_tok_ids], device="cpu"
+        )
+        random_indices = torch.randint(
+            0,
+            len(valid_tok_ids),
+            size=(int(num_suffixes * 1.2), suffix_length),
+            device="cpu",
+        )  # 20% more as buffer
+        random_token_matrix = valid_tok_ids[random_indices]
+    else:
+        # generate all random token IDs at once (allowing non-ASCII)
+        random_token_matrix = torch.randint(
+            0, vocab_size, size=(int(num_suffixes * 1.2), suffix_length), device="cpu"
+        )
+
+    # filter out suffixes that do not tokenize back to the same ids
+    is_valid = wrapped_model.filter_suffixes(suffix_ids=random_token_matrix)
+    num_valid = is_valid.int().sum().item()
+    logger.info(f"Generated {num_valid} valid random suffixes.")
+
+    adv_suffix_ids = random_token_matrix[is_valid]
+    # decode each suffix
+    adv_suffixes = tokenizer.batch_decode(adv_suffix_ids, skip_special_tokens=True)
+    return adv_suffixes
 
 logger = logging.getLogger(__name__)
 
 
 def _rand_permute(size, device: str = "cuda", dim: int = -1):
     return torch.argsort(torch.rand(size, device=device), dim=dim)
-
-
-@dataclass
-class AttackResult:
-    """Attack's output."""
-
-    best_loss: float
-    best_suffix: str
-    num_queries: int
-    success: bool
-    steps: int
 
 
 class GCGAttack(BaseAttack):
@@ -75,9 +130,7 @@ class GCGAttack(BaseAttack):
         return num_coords
 
     @torch.no_grad()
-    def _compute_grad(
-        self, eval_input: EvalInput, normalize_grads: bool = True, **kwargs
-    ) -> torch.Tensor:
+    def _compute_grad(self, eval_input: EvalInput, normalize_grads: bool = True, **kwargs) -> torch.Tensor:
         _ = kwargs  # unused
         grad = self._model.compute_grad(
             eval_input,
@@ -201,14 +254,14 @@ class GCGAttack(BaseAttack):
             num_fixed_tokens=self.num_fixed_tokens,
             max_target_len=self._seq_len,
         )
-        self.eval_input.to("cuda")
+        self.eval_input.to(self._model.model.device)
         self.optim_slice = self.eval_input.optim_slice
 
     def compute_grad(self, adv_suffix):
         dynamic_input_ids = self._suffix_manager.get_input_ids(
             self.messages, adv_suffix, self.target
         )[0][self.num_fixed_tokens :]
-        dynamic_input_ids = dynamic_input_ids.to("cuda")
+        dynamic_input_ids = dynamic_input_ids.to(self._model.model.device)
         optim_ids = dynamic_input_ids[self.optim_slice]
         self.eval_input.dynamic_input_ids = dynamic_input_ids
         self.eval_input.suffix_ids = optim_ids
@@ -279,9 +332,12 @@ class CombinedMultiSampleAttack(GCGAttack):
                 ):
                     sample["input"] += "."
 
+                injected_prompt = (
+                    f" {test_injected_prompt}" if test_injected_prompt else ""
+                )
                 prompt_no_sys = (
                     f"{sample['instruction']}\n\n{data_delm}\n{sample['input']}"
-                    f" {test_injected_prompt}"
+                    f"{injected_prompt}"
                 )
                 messages = [
                     Message(Role.SYSTEM, sys_input),

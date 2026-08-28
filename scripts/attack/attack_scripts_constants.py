@@ -1,4 +1,8 @@
 checkpoint_strategies2checkpoint_strings_llama_secalign = {
+    # all_checkpoints
+    "all_checkpoints": """checkpoints=`seq 0 897`
+echo "Checkpoints: ${checkpoints[@]}"
+    """,
     "step": """checkpoints1=$(seq 0 30)
 checkpoints2=$(seq 50 50 898)
 checkpoints3=897
@@ -11,6 +15,10 @@ echo "Checkpoints: ${checkpoints[@]}"
     "gradnorm": """checkpoints=(0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35  37  38  40  41  43  45  46  49  54  58  59  60  65  72  77  78  79  80  81  84  91  98 102 103 104 109 110 117 118 119 120 125 152 153 157 159 162 163 165 171 174 177 186 189 191 200 219 222 223 225 235 238 257 265 267 274 277 280 285 287 382 432 456 464 484 897)
 echo "Checkpoints: ${checkpoints[@]}"
 """,
+#     # gcg adversarial finetuning checkpoints
+#     "gradnorm": """checkpoints=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35)
+# echo "Checkpoints: ${checkpoints[@]}"
+# """,
     "everyk10": """checkpoints1=$(seq 0 10 898)
 checkpoints2=897
 checkpoints=($checkpoints1 $checkpoints2)

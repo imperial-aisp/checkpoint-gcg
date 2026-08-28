@@ -3,7 +3,7 @@ from typing import Dict, Optional, Sequence
 import torch
 import transformers
 import trl
-from struq import SupervisedDataset
+from struq import SupervisedDataset, jdump
 from config import (
     IGNORE_INDEX,
     DEFAULT_TOKENS,
@@ -48,7 +48,9 @@ class DataArguments:
     data_path: str = field(
         default=None, metadata={"help": "Path to the training data."}
     )
-
+    suffix_folder: Optional[str] = field(
+        default=None, metadata={"help": "Path to attack suffixes."}
+    )
 
 @dataclass
 class AttackArguments:
@@ -99,7 +101,6 @@ class DataCollatorForSupervisedDataset(object):
             attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
         )
 
-
 def get_embedding_indices(tokenizer):
     init_values = [
         tokenizer.encode(v, add_special_tokens=False)[0] for v in TEXTUAL_DELM_TOKENS
@@ -109,9 +110,9 @@ def get_embedding_indices(tokenizer):
 
 
 def smart_tokenizer_and_embedding_resize(
-    special_tokens_dict: Dict,
-    tokenizer: transformers.PreTrainedTokenizer,
-    model: transformers.PreTrainedModel,
+        special_tokens_dict: Dict,
+        tokenizer: transformers.PreTrainedTokenizer,
+        model: transformers.PreTrainedModel,
 ):
     """Resize tokenizer and embedding.
 
@@ -137,7 +138,7 @@ def smart_tokenizer_and_embedding_resize(
         output_embeddings[-num_new_tokens] = output_embeddings_avg
 
         for i in range(
-            len(SPECIAL_DELM_TOKENS)
+                len(SPECIAL_DELM_TOKENS)
         ):  ### initialize real delimiter's embedding by the existing ones
             input_embeddings[-num_new_tokens + i + 1] = input_embeddings[
                 REAL_DELIMITERS_INIT_EMBD_IND[i]
@@ -145,7 +146,6 @@ def smart_tokenizer_and_embedding_resize(
             output_embeddings[-num_new_tokens + i + 1] = output_embeddings[
                 REAL_DELIMITERS_INIT_EMBD_IND[i]
             ]
-
 
 def make_supervised_data_module(
     tokenizer: transformers.PreTrainedTokenizer, data_args, downsample=True
@@ -158,6 +158,20 @@ def make_supervised_data_module(
         downsample=downsample,
     )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
+
+    frontend_delimiters, attack = data_args.attack.split("_")
+
+    training_data_path = (
+        data_args.data_path.split("/")[0]
+        + "/struq_"
+        + frontend_delimiters
+        + "_"
+        + attack
+        + "_"
+        + data_args.data_path.split("/")[2]
+    )
+    jdump(train_dataset.raw_text, training_data_path)
+
     return dict(
         train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator
     )
@@ -170,6 +184,7 @@ def train():
     model_args, data_args, training_args, attack_args = (
         parser.parse_args_into_dataclasses()
     )
+    # os.environ["WANDB_MODE"] = "offline"
     os.makedirs(training_args.output_dir, exist_ok=True)
     if training_args.gradient_checkpointing:
         training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
@@ -195,11 +210,11 @@ def train():
     )
 
     special_tokens_dict = dict()
-    special_tokens_dict["pad_token"] = DEFAULT_TOKENS["pad_token"]  ###
+    special_tokens_dict["pad_token"] = DEFAULT_TOKENS["pad_token"]
     special_tokens_dict["eos_token"] = DEFAULT_TOKENS["eos_token"]
     special_tokens_dict["bos_token"] = DEFAULT_TOKENS["bos_token"]
     special_tokens_dict["unk_token"] = DEFAULT_TOKENS["unk_token"]
-    special_tokens_dict["additional_special_tokens"] = SPECIAL_DELM_TOKENS  ###
+    special_tokens_dict["additional_special_tokens"] = SPECIAL_DELM_TOKENS
     smart_tokenizer_and_embedding_resize(
         special_tokens_dict=special_tokens_dict, tokenizer=tokenizer, model=model
     )
@@ -210,7 +225,12 @@ def train():
     if not training_args.downsample and training_args.lr_scale:
         training_args.learning_rate /= data_module["train_dataset"].data_copy_count
 
-    threshold = 4.5 if "mistral" not in model_args.model_name_or_path.lower() else 7
+    if "mistral" in model_args.model_name_or_path.lower():
+        threshold = 7
+    elif "llama" in model_args.model_name_or_path.lower():
+        threshold = 4.5
+    elif "qwen" in model_args.model_name_or_path.lower():
+        threshold = 3.1
     trainer = transformers.Trainer(
         model=model,
         tokenizer=tokenizer,
@@ -221,6 +241,13 @@ def train():
     trainer.train()
     trainer.save_state()
     trainer.save_model(output_dir=training_args.output_dir)
+
+    # Also save into a checkpoint-* style subfolder
+    final_step = trainer.state.global_step
+    checkpoint_dir = os.path.join(training_args.output_dir, f"checkpoint-{final_step}")
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    trainer.save_model(output_dir=checkpoint_dir)
+
 
 
 if __name__ == "__main__":
